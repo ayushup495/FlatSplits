@@ -92,7 +92,7 @@ select.amf-input{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://w
 /* ══════════════════════════════════
    EDIT MEMBER MODAL
 ══════════════════════════════════ */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:9000;display:none;align-items:flex-end;justify-content:center}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:10000;display:none;align-items:flex-end;justify-content:center}
 .modal-overlay.open{display:flex;animation:fadeUp .2s ease}
 .modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r) var(--r) 0 0;width:100%;max-width:500px;max-height:88vh;overflow-y:auto;padding:20px 16px 36px}
 @media(min-width:600px){.modal-box{border-radius:var(--r);margin-bottom:16px}}
@@ -397,6 +397,39 @@ Developed by <b>Ayush Upadhyay</b>
   </div>
 </div>
 
+<!-- ══ QUICK LOGIN PASSWORD MODAL ══ -->
+<div class="modal-overlay" id="quick-login-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">Enter Password</div>
+      <div class="modal-close" onclick="closeModal('quick-login-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+    </div>
+    <div id="quick-login-body"></div>
+  </div>
+</div>
+
+<!-- ══ USER MENU MODAL ══ -->
+<div class="modal-overlay" id="user-menu-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title" id="um-title">Account</div>
+      <div class="modal-close" onclick="closeModal('user-menu-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+    </div>
+    <div id="user-menu-body" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- ══ CHANGE PASSWORD MODAL ══ -->
+<div class="modal-overlay" id="change-pw-modal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div class="modal-title">Change Password</div>
+      <div class="modal-close" onclick="closeModal('change-pw-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></div>
+    </div>
+    <div id="change-pw-body"></div>
+  </div>
+</div>
+
 <!-- ══ EDIT EXPENSE MODAL ══ -->
 <div class="modal-overlay" id="edit-exp-modal">
   <div class="modal-box">
@@ -677,11 +710,28 @@ function renderLoginList(){
       +'<span class="lm-arrow">›</span></button>';
   }).join('');
 }
+var quickLoginIdx=null;
 function quickLogin(i){
+  quickLoginIdx=i;
   var m=members[i];
-  var pw=prompt('Enter password for '+m.name+':');
-  if(pw===null)return;
-  if(pw===m.password){loginSuccess(i);}
+  var c=mc(i);
+  document.getElementById('quick-login-body').innerHTML=
+    '<div style="text-align:center;margin-bottom:16px">'
+    +'<div class="lm-av" style="width:44px;height:44px;font-size:15px;margin:0 auto 8px;background:'+c.bg+';color:'+c.text+'">'+m.name.slice(0,2).toUpperCase()+'</div>'
+    +'<div style="font-size:15px;font-weight:600;color:var(--text)">'+m.name+'</div></div>'
+    +'<div class="fg"><label class="fl">Password</label><input class="fi" id="ql-password" type="password" placeholder="Enter password"/></div>'
+    +'<button class="btn" onclick="submitQuickLogin()">Sign In →</button>';
+  document.getElementById('quick-login-modal').classList.add('open');
+  setTimeout(function(){
+    var inp=document.getElementById('ql-password');
+    if(inp){inp.focus();inp.addEventListener('keydown',function(e){if(e.key==='Enter')submitQuickLogin();});}
+  },50);
+}
+function submitQuickLogin(){
+  var inp=document.getElementById('ql-password');
+  var pw=inp?inp.value:'';
+  var m=members[quickLoginIdx];
+  if(pw===m.password){closeModal('quick-login-modal');loginSuccess(quickLoginIdx);}
   else{showToast('❌ Wrong password');}
 }
 function doLogin(){
@@ -712,26 +762,35 @@ function loginSuccess(i){
 }
 function showUserMenu(){
   if(!currentUser)return;
-  var opts=['🔑 Change My Password','🚪 Log Out'];
-  if(isAdmin)opts.unshift('👥 Manage Members');
-  var choice=prompt(currentUser.name+'\n\nType:\n'+(isAdmin?'1 = Manage Members\n':'')+'2 = Change Password\n3 = Log Out\n\nYour choice:');
-  if(choice==='1'&&isAdmin)openAdminPanel();
-  else if(choice==='2')changeMyPassword();
-  else if(choice==='3')logOut();
+  document.getElementById('um-title').textContent=currentUser.name+(isAdmin?' 👑':'');
+  var opts='';
+  if(isAdmin)opts+='<button class="btn-edit-sm" style="width:100%;text-align:left;padding:12px 14px;font-size:14px" onclick="closeModal(\'user-menu-modal\');openAdminPanel()">👥 Manage Members</button>';
+  opts+='<button class="btn-edit-sm" style="width:100%;text-align:left;padding:12px 14px;font-size:14px" onclick="closeModal(\'user-menu-modal\');openChangePassword()">🔑 Change My Password</button>';
+  opts+='<button class="btn-del-sm" style="width:100%;text-align:left;padding:12px 14px;font-size:14px" onclick="closeModal(\'user-menu-modal\');logOut()">🚪 Log Out</button>';
+  document.getElementById('user-menu-body').innerHTML=opts;
+  document.getElementById('user-menu-modal').classList.add('open');
 }
-function changeMyPassword(){
-  var oldPw=prompt('Enter your CURRENT password:');
-  if(oldPw===null)return;
-  if(oldPw!==currentUser.password){showToast('❌ Wrong password');return;}
-  var newPw=prompt('Enter your NEW password:');
+function openChangePassword(){
+  document.getElementById('change-pw-body').innerHTML=
+    '<div class="fg"><label class="fl">Current Password</label><input class="fi" id="cp-old" type="password" placeholder="Current password"/></div>'
+    +'<div class="fg"><label class="fl">New Password</label><input class="fi" id="cp-new" type="password" placeholder="New password (4+ characters)"/></div>'
+    +'<div class="fg"><label class="fl">Confirm New Password</label><input class="fi" id="cp-confirm" type="password" placeholder="Confirm new password"/></div>'
+    +'<button class="btn" onclick="submitChangePassword()">Update Password</button>';
+  document.getElementById('change-pw-modal').classList.add('open');
+}
+function submitChangePassword(){
+  var oldPw=document.getElementById('cp-old').value;
+  var newPw=document.getElementById('cp-new').value;
+  var conf=document.getElementById('cp-confirm').value;
+  if(oldPw!==currentUser.password){showToast('❌ Wrong current password');return;}
   if(!newPw||newPw.length<4){showToast('⚠ Password must be at least 4 characters');return;}
-  var confirm=prompt('Confirm new password:');
-  if(newPw!==confirm){showToast('❌ Passwords do not match');return;}
+  if(newPw!==conf){showToast('❌ Passwords do not match');return;}
   var idx=members.findIndex(function(m){return m.username===currentUser.username;});
   if(idx===-1)return;
   members[idx].password=newPw;
   currentUser=members[idx];
   saveMembers();
+  closeModal('change-pw-modal');
   showToast('✅ Password changed!');
 }
 function logOut(){

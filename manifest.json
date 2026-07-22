@@ -1,13 +1,13 @@
 {
-  "name": "FlatSplit",
+  "name": "FlatSplit — Flat Expense Tracker",
   "short_name": "FlatSplit",
-  "description": "Smart flat expense tracker for flatmates",
+  "description": "A Firebase-powered PWA for splitting flat expenses, tracking dues, and settling up fast.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#0a0a0a",
   "theme_color": "#0a0a0a",
   "orientation": "portrait",
-  "scope": "./",
   "icons": [
     {
       "src": "icon-192.png",
