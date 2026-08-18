@@ -1,72 +1,24 @@
 // FlatSplit service worker — caches the app shell so the UI still loads offline.
 // Expense data itself lives in Firebase + localStorage, not in this cache.
-var CACHE_NAME = 'flatsplit-v2';
-var APP_SHELL = [
-  './index.html',
-  './manifest.json',
-  './icon-192.png',
-  './icon-512.png'
-];
-
-self.addEventListener('install', function (event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(function (cache) {
-      return cache.addAll(APP_SHELL);
-    }).catch(function () { /* ignore individual cache failures */ })
-  );
-  self.skipWaiting();
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging-compat.js');
+const CACHE_NAME='flatsplit-v2';
+const APP_SHELL=['./index.html','./manifest.json','./icon-192.png','./icon-512.png'];
+firebase.initializeApp({apiKey:"AIzaSyBuRU5IDAYW7vuB1YGepz6AFOx4sbdL_3M",projectId:"flatsplit-2ed50",messagingSenderId:"67580521737",appId:"1:67580521737:web:281f9c287b83ec398d37d8"});
+const messaging=firebase.messaging();
+messaging.onBackgroundMessage((p)=>{
+  self.registration.showNotification(p.notification.title||"FlatSplit",{body:p.notification.body,icon:'./icon-192.png'});
 });
-
-self.addEventListener('activate', function (event) {
-  event.waitUntil(
-    caches.keys().then(function (keys) {
-      return Promise.all(
-        keys.filter(function (k) { return k !== CACHE_NAME; })
-          .map(function (k) { return caches.delete(k); })
-      );
-    })
-  );
-  self.clients.claim();
+self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(APP_SHELL))));
+self.addEventListener('activate',e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k))))));
+self.addEventListener('fetch',e=>{
+  var req=e.request;if(req.method!=='GET')return;
+  e.respondWith(caches.match(req).then(c=>c||fetch(req).then(r=>{var cl=r.clone();caches.open(CACHE_NAME).then(ch=>ch.put(req,cl));return r;})));
 });
-
-// Network-first for navigation/HTML so users always get the latest app code
-// when online; fall back to cache when offline.
-self.addEventListener('fetch', function (event) {
-  var req = event.request;
-  if (req.method !== 'GET') return;
-
-  if (req.mode === 'navigate') {
-    event.respondWith(
-      fetch(req).catch(function () {
-        return caches.match('./index.html');
-      })
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(req).then(function (cached) {
-      return cached || fetch(req).then(function (res) {
-        var resClone = res.clone();
-        caches.open(CACHE_NAME).then(function (cache) {
-          cache.put(req, resClone);
-        });
-        return res;
-      }).catch(function () { /* offline & not cached */ });
-    })
-  );
-});
-
-// Handles taps on notifications fired via fireLocalNotification() in index.html —
-// focuses an already-open FlatSplit tab if there is one, otherwise opens a new one.
-self.addEventListener('notificationclick', function (event) {
-  event.notification.close();
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (list) {
-      for (var i = 0; i < list.length; i++) {
-        if ('focus' in list[i]) return list[i].focus();
-      }
-      if (clients.openWindow) return clients.openWindow('./index.html');
-    })
-  );
+self.addEventListener('notificationclick',e=>{
+  e.notification.close();
+  e.waitUntil(clients.matchAll({type:'window',includeUncontrolled:true}).then(l=>{
+    for(var i=0;i<l.length;i++){if('focus'in l[i])return l[i].focus();}
+    return clients.openWindow('./index.html');
+  }));
 });
