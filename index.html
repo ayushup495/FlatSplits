@@ -545,19 +545,21 @@ Developed by <b>Ayush Upadhyay</b>
 
   <section class="sec" id="sec-add">
     <div class="sec-title">Add Expense</div>
+    <div class="seg"><button class="sbtn on" id="entry-group" onclick="setEntryScope('group')">👥 Group</button><button class="sbtn" id="entry-personal" onclick="setEntryScope('personal')">🙋 Individual</button></div>
+    <div id="personal-kind" class="seg" style="display:none"><button class="sbtn on" id="personal-expense" onclick="setPersonalKind('expense')">💸 Expense</button><button class="sbtn" id="personal-income" onclick="setPersonalKind('income')">💰 Earned</button></div>
     <div id="add-locked"></div>
     <div id="add-form" style="display:none">
       <div class="card">
-        <div class="fg"><label class="fl">Description</label><input class="fi" id="inp-desc" placeholder="e.g. Vegetables, Rent, Pizza…"/></div>
-        <div class="fg"><label class="fl">Category</label><div class="catgrid" id="cat-grid"></div></div>
-        <div class="fg"><label class="fl">Total Amount (₹)</label><input class="fi" type="text" inputmode="decimal" id="inp-amount" placeholder="0" oninput="sanitizeDecInput(this);onAmtChange()"/></div>
-        <div class="fg">
+        <div class="fg"><label class="fl" id="desc-label">Description</label><input class="fi" id="inp-desc" placeholder="e.g. Vegetables, Rent, Pizza…"/></div>
+        <div class="fg" id="category-field"><label class="fl">Category</label><div class="catgrid" id="cat-grid"></div></div>
+        <div class="fg"><label class="fl" id="amount-label">Total Amount (₹)</label><input class="fi" type="text" inputmode="decimal" id="inp-amount" placeholder="0" oninput="sanitizeDecInput(this);onAmtChange()"/></div>
+        <div class="fg" id="group-payer-field">
           <label class="fl">Who Paid?</label>
           <div class="seg"><button class="sbtn on" id="pay-one" onclick="setPayMode('one')">☝ One person</button><button class="sbtn" id="pay-multi" onclick="setPayMode('multi')">👥 Multiple</button></div>
           <div id="pay-s"><select class="fi" id="inp-paidby"></select></div>
           <div id="pay-m" style="display:none"><div style="font-size:11px;color:var(--text2);margin-bottom:7px">Tick each person who paid</div><div class="mpbox" id="mpbox"></div></div>
         </div>
-        <div class="fg">
+        <div class="fg" id="group-split-field">
           <label class="fl">Split Between</label>
           <div class="seg">
             <button class="sbtn on" id="spl-eq" onclick="setSpl('equal')">🤝 All</button>
@@ -578,7 +580,7 @@ Developed by <b>Ayush Upadhyay</b>
           </div>
         </div>
         <div class="fg"><label class="fl">Date</label><input class="fi" type="date" id="inp-date"/></div>
-        <button class="btn" onclick="addExp()">+ Add Expense</button>
+        <button class="btn" id="add-entry-btn" onclick="addExp()">+ Add Expense</button>
       </div>
     </div>
   </section>
@@ -611,6 +613,7 @@ Developed by <b>Ayush Upadhyay</b>
       <button class="ptbtn" id="pt-month" onclick="setPeriod('month')">This Month</button>
     </div>
     <div class="srow" id="stat-row"></div>
+    <div id="my-money"></div>
     <div class="chart-card">
       <div class="chart-title">Spending by member</div>
       <div style="height:90px"><div class="bars" id="sum-bars"></div></div>
@@ -675,7 +678,16 @@ try{
     }
   };
 
-  var _membersUnsub=null,_expensesUnsub=null;
+  var _membersUnsub=null,_expensesUnsub=null,_privateUnsub=null;
+  window.loadPrivateEntries=function(){
+    if(_privateUnsub){_privateUnsub();_privateUnsub=null;}
+    if(!currentHouseId||!currentUser)return;
+    var key=encodeURIComponent(currentUser.username.toLowerCase());
+    _privateUnsub=onValue(ref(db,'houses/'+currentHouseId+'/private/'+key+'/entries'),function(s){
+      var v=s.val();personalEntries=v?Object.entries(v).map(function(e){return Object.assign({},e[1],{_key:e[0]});}):[];
+      personalEntries.sort(function(a,b){return b.id-a.id;});renderAll();
+    });
+  };
   window.loadHouse=function(houseId){
     return new Promise(function(resolve){
       currentHouseId=houseId;
@@ -767,11 +779,12 @@ var CATS=[
 var members=[];
 
 var expenses=[];
+var personalEntries=[]; // only the signed-in member's own income and personal expenses
 var currentUser=null; // full member object
 var isAdmin=false;
 var currentHouseId=null;
 var houseName='';
-var selCat=0,payMode='one',splMode='equal';
+var selCat=0,payMode='one',splMode='equal',entryScope='group',personalKind='expense';
 var mpChecked=[],selSpl=[],pctVals={};
 var pendingPhoto=null;
 var filterMember=-1,openExpId=null;
@@ -916,6 +929,7 @@ async function doLogin(){
 function loginSuccess(i){
   currentUser=members[i];
   isAdmin=(members[i].role==='admin');
+  if(typeof window.loadPrivateEntries==='function')window.loadPrivateEntries();
   document.getElementById('login-page').classList.add('gone');
   // Update header badge
   var c=mc(i);
@@ -966,7 +980,7 @@ function updateHouseNameUI(){
   if(el)el.textContent=houseName?('• '+houseName):'';
 }
 function logOut(){
-  currentUser=null;isAdmin=false;currentHouseId=null;houseName='';members=[];expenses=[];
+  currentUser=null;isAdmin=false;currentHouseId=null;houseName='';members=[];expenses=[];personalEntries=[];
   updateHouseNameUI();
   document.getElementById('login-page').classList.remove('gone');
   document.getElementById('login-username').value='';
@@ -1320,10 +1334,36 @@ function renderMembersGrid(){
 // ════════════════════════════════════════════
 // ADD EXPENSE
 // ════════════════════════════════════════════
+function setEntryScope(scope){
+  entryScope=scope;
+  document.getElementById('entry-group').classList.toggle('on',scope==='group');
+  document.getElementById('entry-personal').classList.toggle('on',scope==='personal');
+  document.getElementById('personal-kind').style.display=scope==='personal'?'flex':'none';
+  document.getElementById('group-payer-field').style.display=scope==='group'?'block':'none';
+  document.getElementById('group-split-field').style.display=scope==='group'?'block':'none';
+  updatePersonalFormLabels();
+  document.getElementById('add-entry-btn').textContent=scope==='personal'?(personalKind==='income'?'+ Add Earnings':'+ Add Individual Expense'):'+ Add Group Expense';
+  renderAddSection();
+}
+function setPersonalKind(kind){
+  personalKind=kind;
+  document.getElementById('personal-expense').classList.toggle('on',kind==='expense');
+  document.getElementById('personal-income').classList.toggle('on',kind==='income');
+  document.getElementById('add-entry-btn').textContent=kind==='income'?'+ Add Earnings':'+ Add Individual Expense';
+  updatePersonalFormLabels();
+}
+function updatePersonalFormLabels(){
+  var isIncome=entryScope==='personal'&&personalKind==='income';
+  var isPersonalExpense=entryScope==='personal'&&personalKind==='expense';
+  document.getElementById('desc-label').textContent=isIncome?'Income Source':'Description';
+  document.getElementById('inp-desc').placeholder=isIncome?'e.g. Salary, Freelance payment, Refund':(isPersonalExpense?'e.g. Personal shopping, Coffee, Travel':'e.g. Vegetables, Rent, Pizza…');
+  document.getElementById('amount-label').textContent=isIncome?'Amount Earned (₹)':'Total Amount (₹)';
+  document.getElementById('category-field').style.display=isIncome?'none':'block';
+}
 function renderAddSection(){
   var locked=document.getElementById('add-locked');
   var form=document.getElementById('add-form');
-  if(!isAdmin){
+  if(entryScope==='group'&&!isAdmin){
     locked.innerHTML='<div class="locked"><div style="font-size:28px;margin-bottom:8px">🔒</div><div style="font-size:13px;color:var(--text2)">Only <b style="color:var(--text)">Admin</b> can add expenses.</div></div>';
     form.style.display='none';
   }else{locked.innerHTML='';form.style.display='block';}
@@ -1448,6 +1488,7 @@ function notifyFlatmates(entry){
 }
 
 async function addExp(){
+  if(entryScope==='personal'){await addPersonalEntry();return;}
   if(!isAdmin){showToast('🔒 Admin only');return;}
   var desc=document.getElementById('inp-desc').value.trim();
   var amount=parseFloat(document.getElementById('inp-amount').value);
@@ -1487,6 +1528,24 @@ async function addExp(){
   var pnames=payers.map(function(p){return members[p.i]?members[p.i].name:'?';}).join(' & ');
   fireLocalNotification('💸 New Expense',pnames+' paid '+fmt(amount)+' for "'+desc+'"');
   showToast('✅ Expense added!');goTab('history');
+}
+async function addPersonalEntry(){
+  if(!currentUser){showToast('⚠ Sign in first');return;}
+  var desc=document.getElementById('inp-desc').value.trim();
+  var amount=parseFloat(document.getElementById('inp-amount').value);
+  var date=document.getElementById('inp-date').value||new Date().toISOString().split('T')[0];
+  var cmt=document.getElementById('inp-cmt').value.trim();
+  if(!desc){showToast('⚠ Enter description');return;}
+  if(!amount||amount<=0){showToast('⚠ Enter valid amount');return;}
+  var entry={id:Date.now(),type:personalKind,desc:desc,amount:amount,cat:selCat,date:date};
+  if(cmt)entry.comment=cmt;if(pendingPhoto)entry.photo=pendingPhoto;
+  if(window._fbReady&&currentHouseId){
+    var key=encodeURIComponent(currentUser.username.toLowerCase());
+    await window._fbSet('houses/'+currentHouseId+'/private/'+key+'/entries/'+entry.id,entry);
+  }else{personalEntries.unshift(entry);try{localStorage.setItem('fs_personal_'+currentUser.username,JSON.stringify(personalEntries));}catch(e){}renderAll();}
+  document.getElementById('inp-desc').value='';document.getElementById('inp-amount').value='';document.getElementById('inp-cmt').value='';
+  pendingPhoto=null;document.getElementById('photo-hint').textContent='📷 Tap to attach bill photo';document.getElementById('photo-prev').innerHTML='';
+  showToast(personalKind==='income'?'✅ Earnings added!':'✅ Individual expense added!');
 }
 async function delExp(id){
   if(!isAdmin){showToast('🔒 Admin only');return;}
@@ -1654,6 +1713,26 @@ function calcBals(list){
   });
   return members.map(function(_,i){return paid[i]-share[i];});
 }
+function myGroupShare(list){
+  if(!currentUser)return 0;
+  var me=members.findIndex(function(m){return m.username===currentUser.username;});
+  return (list||expenses).reduce(function(total,e){
+    if(e.splitWith.indexOf(me)===-1)return total;
+    return total+((e.customPct?e.amount*(parseFloat(e.customPct[me]||0)/100):e.amount/e.splitWith.length));
+  },0);
+}
+function renderMyMoney(){
+  var el=document.getElementById('my-money');if(!el||!currentUser)return;
+  var earned=personalEntries.filter(function(e){return e.type==='income';}).reduce(function(s,e){return s+e.amount;},0);
+  var personalSpent=personalEntries.filter(function(e){return e.type!=='income';}).reduce(function(s,e){return s+e.amount;},0);
+  var groupSpent=myGroupShare(expenses);
+  var remaining=earned-personalSpent-groupSpent;
+  var recent=personalEntries.slice(0,5);
+  el.innerHTML='<div class="chart-card"><div class="chart-title">🔒 My Money — only you can see this</div>'
+    +'<div class="srow"><div class="scard"><div class="sval" style="color:var(--accent3)">'+fmt(earned)+'</div><div class="slbl">Earned</div></div><div class="scard"><div class="sval" style="color:var(--red)">'+fmt(personalSpent)+'</div><div class="slbl">Individual spent</div></div><div class="scard"><div class="sval">'+fmt(groupSpent)+'</div><div class="slbl">Group share</div></div></div>'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;padding-top:10px;border-top:1px solid var(--border)"><span style="font-size:12px;color:var(--text2)">Available after both expenses</span><b style="font-size:16px;color:'+(remaining>=0?'var(--accent3)':'var(--red)')+'">'+fmt(remaining)+'</b></div>'
+    +(recent.length?'<div style="margin-top:13px;font-size:11px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.4px">My recent entries</div>'+recent.map(function(e){return '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:12px"><span>'+(e.type==='income'?'💰 ':'💸 ')+e.desc+'</span><b style="color:'+(e.type==='income'?'var(--accent3)':'var(--red)')+'">'+(e.type==='income'?'+':'-')+fmt(e.amount)+'</b></div>';}).join(''):'<div style="font-size:12px;color:var(--text3);margin-top:12px">Your individual earnings and expenses will appear here.</div>')+'</div>';
+}
 function calcSettles(list){
   var bals=calcBals(list).map(function(b,i){return {i:i,b:Math.round(b)};});
   var owes=bals.filter(function(b){return b.b<0;}).sort(function(a,b){return a.b-b.b;});
@@ -1680,6 +1759,7 @@ function renderSummary(){
   if(er)er.innerHTML=isAdmin?'<button class="ebtn ebtn-xl" onclick="exportExcel()">📊 Excel</button><button class="ebtn ebtn-pdf" onclick="exportPDF()">📄 PDF</button>':'';
   var filt=getFilt();var total=filt.reduce(function(s,e){return s+e.amount;},0);var per=members.length?total/members.length:0;
   document.getElementById('stat-row').innerHTML='<div class="scard"><div class="sval">'+fmt(total)+'</div><div class="slbl">Total Spent</div></div><div class="scard"><div class="sval">'+fmt(per)+'</div><div class="slbl">Per Person</div></div><div class="scard"><div class="sval">'+filt.length+'</div><div class="slbl">Expenses</div></div>';
+  renderMyMoney();
   var mTots=members.map(function(_,i){return getPaid(i,filt);});var maxT=Math.max.apply(null,mTots.concat([1]));
   document.getElementById('sum-bars').innerHTML=members.map(function(m,i){var pct=Math.round(mTots[i]/maxT*100);return '<div class="bwrap"><div class="bbar" style="height:'+pct+'%;background:'+mc(i).text+';opacity:.85"></div><div class="bval" style="color:'+mc(i).text+'">'+fmt(mTots[i])+'</div><div class="blbl" style="color:'+mc(i).text+'">'+m.name.split(' ')[0]+'</div></div>';}).join('');
   var bals=calcBals(filt);var maxAbs=Math.max.apply(null,bals.map(function(b){return Math.abs(b);}).concat([1]));
